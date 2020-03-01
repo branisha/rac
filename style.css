@@ -1,0 +1,58 @@
+*{
+    font-family: 'PT Mono', 'monospace' ;
+}
+html{
+    font-size: 1.2rem;
+}
+
+.container{
+    display: flex;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.text-containter{
+    flex: 1;
+    flex-basis: 300px;
+    margin: 2rem;
+    position: relative;
+}
+
+.text-field{
+    width: 100%;
+    background-color: #cfff95;
+    border: 2px solid #4b830d;
+    border-radius: 10px;
+    padding: 0.5rem;
+    position: relative;
+}
+
+
+.text-headline{
+    text-align: center;
+    display: inline-block;
+    width: 100%;
+}
+
+.headline-wrap{
+    position: relative;
+}
+
+#compile{
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+button{
+    background-color: #cfff95;
+    border: 2px solid #4b830d;
+    border-radius: 10px;
+    padding: 0.5rem;
+}
+
+.output-containter{
+    flex-basis: 100%;
+
+}

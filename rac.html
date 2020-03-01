@@ -1,13 +1,44 @@
 <html>
-
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link href="https://fonts.googleapis.com/css?family=PT+Mono&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="style.css">
+    </head>
+<body>
     <h1 style="text-align: center;">RAC</h1>
-    <textarea id="input" rows="50" cols="80"></textarea> 
 
-    <textarea id="output" rows="50" cols="80"></textarea> 
-    <br/>
-    <button id="compile">Compile</button>
+    <div class="container">
 
-    <script src="rac.js"></script>
+            <div class="text-containter">
+                <div class="headline-wrap">
+                    <h2 class="text-headline">Input</h2>
+                    <button id="compile">Compile</button>
+                </div>
+                <textarea class="text-field" id="input" rows="20" cols="80">+1: mar := a + 1; PC := b + f;</textarea> 
+
+            </div>
+
+            <div class="text-containter">
+                <h2 class="text-headline">Output</h2>
+                <textarea class="text-field" id="output" rows="20" cols="80" disabled></textarea> 
+
+            </div>
+        
+        
+            <div class="text-containter output-containter">
+                <h2 class="text-headline">Error list</h2>
+                <textarea class="text-field" id="error" rows="10" cols="40" disabled></textarea> 
+
+            </div>
+    
+            
+        </div>
+    
+
+
+        <script src="rac.js"></script>
+    </body>
 
 
 </html>

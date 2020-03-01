@@ -176,11 +176,15 @@ const RESERVERD_KEYWORDS = REGISTER_ARRAY
                             .concat(if_keywords)
                             .concat(jump_conditions);
 
+
+let errorList = new Array();
+
 class InputStream{
     constructor(string){
         this._inputstring = string.trim();
     
-        this._pos = this._coll = this._line = 0;
+        this._pos = 0;
+        this._coll = this._line = 1;
     }
 
     peek(pos = this._pos){
@@ -199,7 +203,7 @@ class InputStream{
     consume(){
         if (this.peek() == '\n') {
             this._line++;
-            this._coll = 0;
+            this._coll = 1;
         }
         this._coll++;
         return this.peek(this._pos++);
@@ -221,8 +225,10 @@ class Tokenizer extends InputStream{
         // newline counts as end of instruction
         this._currentToken = {
             type: "newline",
-            value: "\n"
+            value: "\n",
+            lineLocation: 0
         };
+        errorList = [];
     }
 
     get currentToken(){
@@ -233,7 +239,10 @@ class Tokenizer extends InputStream{
     }
 
     throwError(message){
-        throw new Error("Error at line: " + this._line + " col: " + this._coll +": " + message);
+        let errorObj = {};
+        errorObj[this._line] = message;
+        errorList.push(errorObj);
+        // throw new Error("Error at line: " + this._line + " col: " + this._coll +": " + message);
     }
 
     // lets start with metods that check first element in string
@@ -294,6 +303,7 @@ class Tokenizer extends InputStream{
         // two rules for labels
         // last char is ":", or previous token is
         // a keyword from if (goto)
+        
         if(!RESERVERD_KEYWORDS.includes(val)
             && /[a-zA-Z0-9]+/i.test(val)){
                 if( (this.currentToken.type == "newline" || this.currentToken.value == "goto")
@@ -346,6 +356,11 @@ class Tokenizer extends InputStream{
     tryRegisterOrLabel(val){
         // returns register, or label or error
 
+        if(this.is_register(val) == true && this.peek() != ":" && this.currentToken.value != "goto"){
+            let _r  = registerFromString(val);
+            _r["lineLocation"] = this._line;
+            return _r;
+        }
         if(this.currentToken.type == "newline"){ 
             if(this.peek() != ":"){
                 // label, just incomplete
@@ -354,19 +369,23 @@ class Tokenizer extends InputStream{
                 return{
                     type: "label",
                     value: val,
-                    line: this._line
+                    line: this._line,
+                    lineLocation: this._line
                 }
             }else if(this.peekRelative(1) != "="){
                 // label, complete
                 return{
                     type: "label",
                     value: val,
-                    line: this._line
+                    line: this._line,
+                    lineLocation: this._line
                 }
             }else{
                 // try register
                 if(this.is_register(val) == true){
-                    return registerFromString(val)
+                    let _r  = registerFromString(val);
+                    _r["lineLocation"] = this._line;
+                    return _r;
                 }
             }
         // try label
@@ -376,11 +395,14 @@ class Tokenizer extends InputStream{
             return{
                 type: "label",
                 value: val,
-                line: this._line
+                line: this._line,
+                lineLocation: this._line
             }
         }else{
             if(this.is_register(val) == true){
-                return registerFromString(val)
+                let _r  = registerFromString(val);
+                _r["lineLocation"] = this._line;
+                return _r;
             }
         }
 
@@ -392,11 +414,11 @@ class Tokenizer extends InputStream{
         else if(this.currentToken.value == "goto"){
             this.throwError("Expecting label");
         }else{
-            debugger;
-            this.throwError("GENERAL ERROR; STILL NEEDS HANDING: Expecting register");
+            
+            this.throwError("command not recognized");
         }
         
-        debugger;
+        
         
         return null;
     }
@@ -414,35 +436,40 @@ class Tokenizer extends InputStream{
             let val = this.consumeUntil(x => this.is_newline(x));
             return {
                 type:"newline",
-                value: val
+                value: val,
+                lineLocation: this._line
             }
         }
         if(this.is_subinstruction_separator(this.peek())){
             let val = this.consume();
             return {
                 type:"subinstruction_separator",
-                value: val
+                value: val,
+                lineLocation: this._line
             }
         }
         if( this.is_label_definer(this.peek()) &&  !this.is_operation_char(this.peekRelative(1)) ){
             let val = this.consume();
             return {
                 type:"label_definer",
-                value: val
+                value: val,
+                lineLocation: this._line
             }
         }
         if(this.is_operation_char(this.peek())){
             let val = this.consumeUntil(x => this.is_operation_char(x));
             return {
                 type:"operation",
-                value: val
+                value: val,
+                lineLocation: this._line
             }
         }
         if(this.is_wrapper(this.peek())){
             let val = this.consume();
             return {
                 type:"wrapper",
-                value: val
+                value: val,
+                lineLocation: this._line
             }
         }
 
@@ -458,25 +485,29 @@ class Tokenizer extends InputStream{
             if(this.is_jump_condition(tempValue)){
                 return {
                     type: "jump_condition",
-                    value: tempValue
+                    value: tempValue,
+                    lineLocation: this._line
                 }
             }
             if(this.is_if_keyword(tempValue)){
                 return {
                     type: "if_keyword",
-                    value: tempValue
+                    value: tempValue,
+                    lineLocation: this._line
                 }
             }
             if(this.is_operation(tempValue)){
                 return {
                     type: "operation",
-                    value: tempValue
+                    value: tempValue,
+                    lineLocation: this._line
                 }
             }
             if(this.is_param_operation(tempValue)){
                 return {
                     type: "param_operation",
-                    value: tempValue
+                    value: tempValue,
+                    lineLocation: this._line
                 }
             }
             // register or label? maybe even error
@@ -501,10 +532,11 @@ class Tokenizer extends InputStream{
 class ASTmaker{
     constructor(tokenList){
         this.tokenList = tokenList;
-        this._lastToken = {
-            type: "newline",
-            value: "\n"
-        }
+            this._lastToken = {
+                type: "newline",
+                value: "\n",
+                lineLocation: 0
+            }
     }
 
     get lastToken(){
@@ -536,9 +568,13 @@ class ASTmaker{
     }
 
     throwError(msg){
-        // set line / ins / sub ins for object property to remember them
-        alert("Error: " + msg);
-        debugger;
+        // set line / ins / sub ins for object property to remember them        
+        var linePos = this.lastToken["lineLocation"];
+        if(this.lastToken["value"] == "\n") linePos++;
+        let errorObj = { };
+        errorObj[linePos] = msg;
+        errorList.push(errorObj);
+        // alert("Error: " + msg);
     }
 
     parse_register(){
@@ -592,8 +628,8 @@ class ASTmaker{
             // param_operation is always contains paranthesies
             
             if(this.peek()["value"] != ("(")){
-                alert("Error: param op dosent conatain opening \"(\"");
-                debugger;
+                this.throwError("param op dosent conatain opening \"(\"");
+                
             }else{
                 this.consume();
             }
@@ -620,8 +656,8 @@ class ASTmaker{
                 }
             }
             if(this.peek()["value"] != (")")){
-                alert("Error: param op dosent conatain closing \")\"");
-                debugger;
+                this.throwError("param op dosent conatain closing \")\"");
+                
             }else{
                 this.consume();
             }
@@ -629,8 +665,8 @@ class ASTmaker{
             let reg_maybeLeft = this.parse_register();
             if(this.peek()["value"] != ";"){
                 if(this.peek()["value"] != "+"){
-                    alert("Error: only + is allowed after register in assignment op");
-                    debugger;
+                    this.throwError("only + is allowed after register in assignment op");
+                    
                 }
                 else{
                     return {
@@ -646,13 +682,13 @@ class ASTmaker{
             }
 
         }else{
-            alert("Error: right side of := not containing register or suboperation");
-            debugger;
+            this.throwError("right side of := not containing register or suboperation");
+            
         }
 
         if(obj == null){
-            alert("AST error pase");
-            debugger;
+            this.throwError("AST error pase");
+            
         }
         return obj;
     }
@@ -677,8 +713,8 @@ class ASTmaker{
     parse_label_definition(){
         let label = this.consume();
         if(this.peek()["type"] != "label_definer"){
-            alert("Error parsing label deifintion, \":\" not found after definition");
-            debugger;
+            this.throwError("Error parsing label deifintion, \":\" not found after definition");
+            
         }
         this.consume(); // eat :
         return label;
@@ -713,8 +749,8 @@ class ASTmaker{
             return this.parse_if();
         }else if(this.peek()["type"] == "label"){
             if(this.lastToken["type"] != "newline"){
-                alert("Label definition only allowed at start of instruction");
-                debugger;
+                this.throwError("Label definition only allowed at start of instruction");
+                
             }
             return this.parse_label_definition();
         }
@@ -724,8 +760,8 @@ class ASTmaker{
             return {type: "halt"};
         }
         else{
-            alert("Instruction not allowed");
-            debugger;
+            this.throwError("Instruction not allowed");
+            
         }
     }
 
@@ -750,14 +786,19 @@ class ASTmaker{
 
             if(sub_ins.length > 6){
                 // max length of subins, label def counts as sub ins
-                alert("Max number of sub instruction reached");
-                debugger;
+                this.throwError("Max number of sub instruction reached");
+                
             }
 
             let resp = this.parse_subinstruction();
             if(this.peek()["value"] != ";"){
-                alert("Subinstuctions not parsed until end");
-                debugger;
+                this.throwError("Subinstuctions not parsed until end, skipping sub instuction");
+                // debugger;
+                while(this.tokenList.length > 0 && this.peek()["value"] != '\n'){
+                    this.consume();
+                }
+                this.consume();
+
             }else{
                 sub_ins.push(resp);
                 this.consume();
@@ -775,8 +816,8 @@ class ASTmaker{
         let ins = new Array();
         while(this.tokenList.length > 0){
             if(this.peek()["type"] != "newline" && this.peek()["type"] != ""){
-                alert("Error parsing instruction!");
-                debugger;
+                this.throwError("Error parsing instruction!");
+                
             }
             this.consume();
             ins.push(this.parse_instruction());
@@ -823,6 +864,10 @@ class MicCodeGenerator{
 
         this._instructions = new Array();
 
+        this._errorFlag = false;
+        this._currentLine = 1;
+
+
     }
 
     get program(){
@@ -834,6 +879,14 @@ class MicCodeGenerator{
     }
     get label_jumps(){
         return this._label_jumps;
+    }
+
+    get currentLine(){
+        return this._currentLine;
+    }
+    
+    set currentLine(number){
+        this._currentLine = number;
     }
 
     isBusFreeOrSame(bus, reg){
@@ -913,8 +966,13 @@ class MicCodeGenerator{
 
 
     throwError(msg){
-        alert("Error: " + msg);
-        debugger;
+        // debugger;
+        // if(this.lastToken["value"] == "\n") linePos++;
+        let errorObj = { };
+        errorObj[this.currentLine] = msg;
+        errorList.push(errorObj);
+        // alert("Error: " + msg);
+        
     }
 
     isLabelDefined(label){
@@ -1012,7 +1070,7 @@ class MicCodeGenerator{
 
         if(bitstring.length != 32){
             this.throwError("Instruction length mismatch");
-            debugger;
+            
         }
 
         let ins_code = parseInt(bitstring, 2);
@@ -1024,10 +1082,8 @@ class MicCodeGenerator{
     compileLabels(){
         // compiles list of label definitions
         // and checks for errors
-        this.program["body"].forEach((x) => {
-          
+        this.program["body"].forEach((x) => {            
                 let label = x;
-                
                 if(x["body"][x["body"].length - 1] && x["body"][x["body"].length - 1]["type"]){
                     let last_elem = x["body"][x["body"].length - 1];
                     if(last_elem["type"] && last_elem["type"]["type"] == "if_keyword"){
@@ -1042,13 +1098,13 @@ class MicCodeGenerator{
                         }
                     }
                 }
-
                 if(label["value"] != ""){
                     if(!this.isLabelDefined(label)){
                         this.label_defs.push(label);
                     }
                     else{
-                        alert("Label \"" + label["value"] + "\" already defined");
+                        this.throwError("Label \"" + label["value"] + "\" already defined");
+                        // alert("Label \"" + label["value"] + "\" already defined");
                     }
                 }
             
@@ -1110,7 +1166,7 @@ class MicCodeGenerator{
                 if(this._amux > 0){
                     this.throwError("op add: a bus, amux is set");
                 }else{
-                    this.throwError("op add: undefined branch");
+                    this.throwError("op add: buses already taken");
                 }
                 return;
             }
@@ -1211,7 +1267,7 @@ class MicCodeGenerator{
 
         if(!this.checkOutputRegister(reg_Left)){
             this.throwError("assign error");
-            debugger;
+            
             return null;
         }
         this.setOutputRegister(reg_Left);
@@ -1256,7 +1312,7 @@ class MicCodeGenerator{
                 return this.compile_param_op(nested_op);
             }else{
                 this.throwError("general assign error");
-                debugger;
+                
                 return;
             }
         }   
@@ -1338,7 +1394,7 @@ class MicCodeGenerator{
                 // and 0x0, which is NOOP
                 this.setStateForHalt();
             }else{
-
+                
                 alert("Error compiling");
             }
         }
@@ -1351,6 +1407,7 @@ class MicCodeGenerator{
 
         for(let i = 0; i < line_subs.length; i++){
             let _line = line_subs[i];
+            this.currentLine = _line["lineLocation"];
             this.compile_segment(_line);
         }
         this.flushInstruction();
@@ -1370,8 +1427,7 @@ class MicCodeGenerator{
 // Everything below is test code and/or dragons
 
 
-let example_string = `
-0:   mar := pc; rd;
+let example_string = `0:   mar := pc; rd;
 1:   pc := pc +1; rd;
 2:   ir := mbr; if n then goto 28;
 3:   tir := lshift(ir + ir); if n then goto 19;
@@ -1453,16 +1509,9 @@ let example_string = `
 79:  a := a + 1; goto 75;
 80:  halt;
 81:  a:=1;
-82:  halt;
-`;
+82:  halt;`;
 
-
-let input_string = `0:   mar := pc; rd;
-1:   pc := pc +1; rd;
-2:   ir := mbr; if n then goto 28;
-3:   tir := lshift(ir + ir); if n then goto 19;
-4:   tir := lshift(tir); if n then goto 11;
-`;
+document.getElementById("input").textContent = example_string;
 
 
 
@@ -1488,7 +1537,7 @@ document.getElementById("compile").onclick = () => {
     while(!lexer.isEof()){
         let val = lexer.doFullRead();
         if(val == null){
-            debugger;
+            
         }else{
             myarray.push(val);
             console.log(val);
@@ -1502,7 +1551,7 @@ document.getElementById("compile").onclick = () => {
     let cg = new MicCodeGenerator(finish_ast);
 
     let label_check = cg.compileLabels();
-        
+    
     if(label_check != true){
         let label_list = label_check.map(x => x["value"]);
         alert("Label compiling failed, following labels not found:\n" + label_list + ".");
@@ -1521,5 +1570,13 @@ document.getElementById("compile").onclick = () => {
     text_output.value = "";
     cg._instructions.forEach(x => {
         text_output.value = text_output.value + "0b" + (x >>> 0).toString(2).padStart(32, '0') + "\n";
+    });
+
+    // flush error list
+    var errorOutput = document.getElementById("error");
+    errorOutput.textContent = "";
+    errorList.forEach(x => {
+        let key =Object.keys(x)[0]; 
+        errorOutput.textContent += key.toString() + ": " + x[key].toString() + "\n";
     });
 };
